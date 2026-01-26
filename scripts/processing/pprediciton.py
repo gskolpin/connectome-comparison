@@ -62,6 +62,7 @@ def get_connectomes(con_model=con_model, con_filepath=con_filepath, sublist=subl
                 loaded_data = pkl.load(i)
                 if con_model == 'lassoBIC_blocks':
                     #currently getting just the fold 0 model, I know median of them was mentioned?
+                    #remove diagonal here, and down
                     fold_0_model = loaded_data['fold_0']['fc_matrix']
                     connectomes[sub] = fold_0_model.ravel()
                 if con_model == 'correlation_random':
@@ -82,6 +83,7 @@ def get_connectomes(con_model=con_model, con_filepath=con_filepath, sublist=subl
 # %%
 lasso_connectomes = get_connectomes()
 lasso_connectomes.head()
+print(np.shape(lasso_connectomes))
 
 # %%
 corr_connectomes = get_connectomes(con_model='correlation_random')
@@ -142,17 +144,18 @@ def fit_lasso(X, y, folds, model_str):
     fold = 0
     results = {}
     predictions = []
+    k_fold_y = []
+    X = np.array(X)
+    y = np.array(y)
     for train_index, test_index in kf.split(X):
         fold += 1
         #print(f" Train: shape={np.shape(train_index)}")
         #print(f" Test: shape={np.shape(test_index)}")
-        X = np.array(X)
-        y = np.array(y)
         train_X = X[train_index]
-        scaler.fit_transform(train_X)
+        train_X = scaler.fit_transform(train_X)
         train_y = y[train_index]
         test_X = X[test_index]
-        scaler.transform(test_X)
+        test_X = scaler.transform(test_X)
         test_y = y[test_index]
 
         if model_str == 'Lasso':
@@ -164,11 +167,13 @@ def fit_lasso(X, y, folds, model_str):
         test_rsq, train_rsq = eval_metrics(train_X, train_y, test_X, test_y, model)
         results[f'fold {fold} stats'] = {'eval_metrics': [test_rsq, train_rsq], 'model': deepcopy(model)}
         predictions.extend(model.predict(test_X))
+        k_fold_y.extend(test_y)
         print(f'fold {fold} complete')
     #Now I have the predictions for each left out part, really should concatinate
     #those somewhere else and then just report the p.
-    results['full_prediction_r2'] = r2_score(y, predictions)
+    results['full_prediction_r2'] = r2_score(k_fold_y, predictions)
     results['predictions'] = predictions
+    results['k_fold_age'] = k_fold_y
     return(results)
 
 
@@ -183,10 +188,10 @@ print(np.shape(corr_data))
 
 # %%
 #its okay now
-print(type(rand100_phenotype.index[1]))
-print(type(connectomes.index[1]))
-for index in connectomes.index:
-    assert index in rand100_phenotype.index
+#print(type(rand100_phenotype.index[1]))
+#print(type(connectomes.index[1]))
+#for index in connectomes.index:
+#    assert index in rand100_phenotype.index
 
 # %%
 lasso_results = fit_lasso(lasso_data[[f'edge_{num}' for num in range(10000)]], lasso_data['age'], 5, 'LassoCV')
@@ -197,19 +202,40 @@ print(lasso_results['full_prediction_r2'])
 print(corr_results['full_prediction_r2'])
 
 # %%
+print(lasso_results['fold 1 stats']['eval_metrics'])
+print(corr_results['fold 1 stats']['eval_metrics'])
+
+# %%
 #want to visualize some stuff, but can do that quickly maybe:    
 f, (ax1, ax2) = plt.subplots(ncols=2, sharex=True, sharey=True, figsize=(10, 5))
-ax1.scatter(corr_data['age'], corr_results['predictions'], alpha=0.5)
-corr_b, corr_a = np.polyfit(corr_data['age'], corr_results['predictions'], 1)
-ax1.plot(corr_data['age'], corr_a + corr_b * corr_data['age'], color='red')
+ax1.scatter(corr_results['k_fold_age'], corr_results['predictions'], alpha=0.5)
+corr_b, corr_a = np.polyfit(corr_results['k_fold_age'], corr_results['predictions'], 1)
+ax1.plot(corr_results['k_fold_age'], corr_a + corr_b * corr_data['age'], color='red')
 
-ax2.scatter(lasso_data['age'], lasso_results['predictions'], alpha=0.5)
-lasso_b, lasso_a = np.polyfit(lasso_data['age'], lasso_results['predictions'], 1)
-ax2.plot(lasso_data['age'], lasso_a + lasso_b * lasso_data['age'], color='red')
+ax2.scatter(lasso_results['k_fold_age'], lasso_results['predictions'], alpha=0.5)
+lasso_b, lasso_a = np.polyfit(lasso_results['k_fold_age'], lasso_results['predictions'], 1)
+ax2.plot(lasso_results['k_fold_age'], lasso_a + lasso_b * lasso_data['age'], color='red')
 
 ax1.set_title('correlation')
 ax2.set_title('lasso')
 plt.show()
+
+
+# %%
+def plotage(data):
+    histage = data.hist(['age'], bins=np.arange(32) - 0.5)
+    plt.xticks(range(8, 24))
+    plt.xlim(7, 24)
+    plt.grid(False)
+    plt.xlabel('age')
+    plt.ylabel('count')
+    plt.title('PNC age distribution')
+    plt.show()
+    print('min:',  data['age'].min(), 'max:', data['age'].max())
+
+
+# %%
+plotage(rand100_phenotype)
 
 # %%
 p = (phenotype['p_factor_mcelroy_harmonized_all_samples'])
