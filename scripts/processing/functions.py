@@ -110,7 +110,7 @@ def get_connectomes(con_model, network=False, con_filepath=con_filepath, sublist
         return connectomes, timeseries_pred
 
 
-def cpm(X, y, folds, correlate, alpha, model_obj, corr_matricies, plot=False):
+def cpm(X, y, folds, correlate, alpha, model_obj, corr_matricies):
     '''
     X; connectomes (only makes sense to use the full connectomes)
     y; predictor
@@ -126,8 +126,6 @@ def cpm(X, y, folds, correlate, alpha, model_obj, corr_matricies, plot=False):
     kf = KFold(folds)
     fold = 0
     k_fold_y = []
-    if plot:
-        f, asx = plt.subplots(folds, None)
     for train_index, test_index in kf.split(X):
         r_vals = []
         p_vals = []
@@ -175,14 +173,13 @@ def cpm(X, y, folds, correlate, alpha, model_obj, corr_matricies, plot=False):
         predictions.extend(pl.predict(test_sub_sums[['total']]))
         #can refit and repredict for pos and neg networks, if either is better I would be very confused.
         k_fold_y.extend(test_y)
-        print(f'fold {fold} complete')
         fold += 1
     
     results['k_fold_age'] = k_fold_y
     results['full_r2'] = r2_score(k_fold_y, predictions)
     results['MAE'] = mean_absolute_error(k_fold_y, predictions)
     results['predictions'] = predictions
-    results['r'] = np.corrcoef(k_fold_y, predictions)
+    results['r'] = np.corrcoef(k_fold_y, predictions)[0, 1]
     results['residuals'] = [y - yprime for y, yprime in zip(results['k_fold_age'], results['predictions'])]
 
     return(results)
