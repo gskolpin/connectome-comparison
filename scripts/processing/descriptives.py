@@ -54,6 +54,8 @@ import seaborn as sns
 from functions import get_connectomes
 from functions import cpm
 from functions import fit_model
+from functions import get_networks
+from functions import get_timeseries_pred
 
 # %load_ext autoreload
 # %autoreload 2
@@ -63,12 +65,13 @@ from functions import fit_model
 #filepath to the csv connectivity files themselves
 con_filepath = '/gscratch/scrubbed/gkolpin/xcpd_output/pnc_xcpd_4S156Parcels/derivatives/connectivity-matrices/xcpd'
 #and model
-con_model = 'lassoBIC_blocks'
+con_model = 'lassoBIC_task'
 #filepath for the predictor or just all the phenotype data (need to make a space for those in scrubbed)
 p_filepath = '/gscratch/scrubbed/gkolpin/phenotype_data/study-PNC_desc-participants.tsv'
 scaler = StandardScaler() #making it normal so things work with it
 sublist_filepath = '/gscratch/escience/gkolpin/connectome-comparison/data/rand709_sub_list.txt'
 random_state = 10
+networks = True
 
 # %%
 sublist = []
@@ -77,43 +80,33 @@ with open(sublist_filepath, 'r') as file:
 print(len(sublist))
 
 # %%
-#lets just first get the atlas image
-atlas = nilearn.datasets.fetch_atlas_schaefer_2018(n_rois=100, yeo_networks=7)
-atlas_filename = atlas.maps
-#plot_roi(atlas_filename, title="Schaefer_2018 atlas", view_type="contours")
-
-atlas_17 = nilearn.datasets.fetch_atlas_schaefer_2018(n_rois=100, yeo_networks=17)
-atlas17_filename = atlas.maps
-
-# %%
-#now see if we can get the edge network labels
-full_labels = atlas.labels[1:]
-labels_7 = [label.split("_")[2] for label in full_labels]
-
-full_labels_17 = atlas_17.labels[1:]
-labels_17 = [label.split("_")[2] for label in full_labels_17]
+if networks:
+    atlas = nilearn.datasets.fetch_atlas_schaefer_2018(n_rois=100, yeo_networks=7)
+    atlas_filename = atlas.maps
+    plot_roi(atlas_filename, title="Schaefer_2018 atlas", view_type="contours")
+    
+    atlas_17 = nilearn.datasets.fetch_atlas_schaefer_2018(n_rois=100, yeo_networks=17)
+    atlas17_filename = atlas.maps
 
 # %%
-task_connectomes, task_tp = get_connectomes(con_model='lassoBIC_task')
+if networks:
+    full_labels = atlas.labels[1:]
+    labels_7 = [label.split("_")[2] for label in full_labels]
+    
+    full_labels_17 = atlas_17.labels[1:]
+    labels_17 = [label.split("_")[2] for label in full_labels_17]
 
 # %%
-net7_lasso_connectomes = get_connectomes(con_model='lassoBIC_blocks', network=True, network_labels=labels_7)[0]
-net17_lasso_connectomes = get_connectomes(con_model='lassoBIC_blocks', network=True, network_labels=labels_17)[0]
+if networks:
+    net7_lasso_connectomes = get_networks(con_model=con_model, network_labels=labels_7)
+    net17_lasso_connectomes = get_networks(con_model=con_model, network_labels=labels_17)
+lasso_connectomes = get_connectomes(con_model=con_model)
 
 # %%
-net7_corr_connectomes = get_connectomes(con_model='correlation_random', network=True, network_labels=labels_7)
-net17_corr_connectomes = get_connectomes(con_model='correlation_random', network=True, network_labels=labels_17)
-#net17_corr_connectomes.head()
-
-# %%
+if networks:
+    net7_corr_connectomes = get_networks(con_model='correlation_random', network_labels=labels_7)
+    net17_corr_connectomes = get_networks(con_model='correlation_random', network_labels=labels_17)
 corr_connectomes = get_connectomes(con_model='correlation_random')
-#corr_connectomes.head()
-print(len(corr_connectomes))
-
-# %%
-lasso_connectomes, lasso_tp = get_connectomes(con_model='lassoBIC_blocks')
-#lasso_connectomes.head()
-print(len(lasso_connectomes))
 
 # %%
 #wanting to visualize the connectomes, just get a view, and ideally view the network grouped ones too
@@ -175,6 +168,7 @@ for ax_col in axs:
         ax.set_xticks([])
         ax.set_yticks([])
 cbar = f.colorbar(c1, ax=axs, shrink=0.5)
+plt.savefig('avg_connectomes')
 
 # %%
 # sd ones are on a different scale so I think need to be plotted differently
@@ -202,28 +196,6 @@ for ax_col in axs:
 cbar = f.colorbar(c1, ax=axs, shrink=0.5)
 
 # %%
-#here and below are diagnostic stuff for the task_cv connectomes... they seem not great
-sd_task_connectome = task_connectomes.std()
-sd_corr_connectome = corr_connectomes.std()
-ids = lasso_connectomes.index
-f, axs = plt.subplots(1, 2)
-c1 = axs[0].imshow(np.reshape(sd_task_connectome, (100, 100)), vmin=0, vmax=.35, cmap='binary')
-c2 = axs[1].imshow(np.reshape(sd_lasso_connectome, (100, 100)), vmin=0, vmax=.35, cmap='binary')
-
-axs[0].set_title('Task Connectomes Standard Deviation', fontsize=10, rotation=10)
-axs[1].set_title('Lasso Connectomes Standard Deviation', fontsize=10, rotation=10)
-for ax in axs:
-    ax.set_xticks([])
-    ax.set_yticks([])
-cbar = f.colorbar(c1, ax=axs, shrink=0.5)
-
-# %%
-print(min(task_tp.values()), max(task_tp.values()))
-
-# %%
-print(min(lasso_tp.values()), max(lasso_tp.values()))
-
-# %%
 phenotype = pd.read_csv(p_filepath, delimiter = '\t', header=0)
 phenotype.set_index('participant_id', inplace=True, drop=False)
 phenotype.rename(columns={'participant_id': 'id'}, inplace=True)
@@ -231,7 +203,7 @@ phenotype.rename(columns={'participant_id': 'id'}, inplace=True)
 # %%
 #looking at sparcity of connectomes Ive got
 #TO DO: maybe something thats the opposite of sparsity, like looking at generally strong edges? 
-cuttoff = 0.69 #max to still get 1 edge is 0.69
+cuttoff = 0.23 #max for task is around here
 sparce_edges = {}
 diagonal_edges = {}
 for edge_name, edges in lasso_connectomes.items():
@@ -255,6 +227,14 @@ for sub in sublist:
 rand100_phenotype.rename(columns={'id': 'participant_id'}, inplace=True)
 rand100_phenotype.set_index('participant_id', inplace=True)
 #pprint.pprint(rand100_phenotype)
+
+# %%
+lasso_data = pd.concat([lasso_connectomes, rand100_phenotype], join='inner', axis=1)
+corr_data = pd.concat([corr_connectomes, rand100_phenotype], join='inner', axis=1)
+net7_lasso_data = pd.concat([net7_lasso_connectomes, rand100_phenotype], join='inner', axis=1)
+net17_lasso_data = pd.concat([net17_lasso_connectomes, rand100_phenotype], join='inner', axis=1)
+net7_corr_data = pd.concat([net7_corr_connectomes, rand100_phenotype], join='inner', axis=1)
+net17_corr_data = pd.concat([net17_corr_connectomes, rand100_phenotype], join='inner', axis=1)
 
 # %%
 fullXs = [corr_data[corr_data.columns[:10000]], lasso_data[lasso_data.columns[:10000]]]
@@ -295,13 +275,48 @@ plt.tight_layout()
 plt.show()
 
 # %%
-'''
-does not work
-X = net7_corr_data[net7_corr_data.columns[:49]]
-y = net7_corr_data['age']
-fracs = np.linspace(0, 1, n_alphas)
-fracridge(X, y, fracs=fracs)
-'''
+#if I want to do p things
+p = 'p_factor_mcelroy_harmonized_all_samples'
+datas = [lasso_data, corr_data, net7_lasso_data, net7_corr_data, net17_lasso_data, net17_corr_data]
+for data in datas:
+    data.dropna(axis=0, subset=[p], inplace=True)
+
+# %%
+#Recreating the RBC figure 7 stuff
+data = net7_corr_data
+predictor = 'age'
+vis_edge = 'SalVentAttn_to_SalVentAttn'
+vis_dfn_edge = 'SalVentAttn_to_Default'
+net7_labels = ['Visual', 'Somatomotor', 'Dorsal Attention', 'Ventral Attention', 'Limbic', 'Control', 'Default Mode']
+net7_labels.reverse()
+locations = np.arange(len(net7_labels))
+#first just the matrix, want to see
+fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+age_matrix = []
+for edge in net7_corr_data.columns[:49]:
+    age_matrix.append(scipy.stats.pearsonr(data[edge], data[predictor])[0])
+age_matrix.reverse()
+age_matrix = np.reshape(age_matrix, (7, 7))
+#age_matrix = np.tril(age_matrix)
+
+sns.heatmap(age_matrix, annot=True, cmap='bwr', fmt='.2f',ax=axs[0], linewidths=0.5, vmin=-0.25, vmax=0.25) 
+axs[0].set_xticks(locations, net7_labels, rotation=45, ha='right', rotation_mode='anchor')
+axs[0].set_yticks(locations, net7_labels, rotation=45, ha='right', rotation_mode='anchor')
+axs[0].set_title('Network Connectivity Correlations to ' + predictor)
+
+
+axs[1].scatter(data[predictor], data[vis_edge], alpha=0.5)
+n7_b, n7_a = np.polyfit(data[predictor], data[vis_edge], 1)
+axs[1].plot(data[predictor], n7_a + n7_b * data[predictor], color='darkorange')
+axs[1].set_xlabel(predictor)
+axs[1].set_ylabel('LASSO Functional Connectivity (r)', rotation=90)
+axs[1].set_title('Ventral Attention - Ventral Attention')
+fig.tight_layout()
+plt.show()
+#ax.set_yticks(locations)
+#ax.set_yticks(locations)
+#ax.set_xticklabels(net7_labels)
+#ax.set_yticklabels(net7_labels)
 
 # %%
 histage = rand100_phenotype.hist(['age'], bins=np.arange(32) - 0.5)
@@ -323,21 +338,49 @@ plt.xlabel('p-factor')
 plt.ylabel('count')
 plt.title('PNC p-factor distribution')
 plt.show()
-print('min:',  rand100_phenotype['age'].min(), 'max:', rand100_phenotype['age'].max())
+print('min:',  rand100_phenotype[p].min(), 'max:', rand100_phenotype[p].max())
 
 # %%
-#okay so stratified by age
-lasso_data['residuals'] = lasso_results['residuals']
-data = lasso_data
-age_brackets = [8, 10, 12, 14, 16, 18, 20, 22]
-for lower in age_brackets:
-    upper = lower + 2
-    filtered_data = data[data['age'].between(lower, upper)]
-    '''
-    model = RidgeCV()
-    upper = lower + 2
-    filtered_data = data[data["age"].between(lower, upper)]
-    filtered_results = fit_model(filtered_data[[f'edge_{num}' for num in range(10000)]], filtered_data['age'], model, folds=5, component='PCA')
-    print(f'ages {lower} to {upper}', filtered_results['fold 1 stats'], 'full r2:', filtered_results['full_r2'])
-    '''
-    print(filtered_data['residuals'].mean())
+histage = rand100_phenotype.hist(['attention_mcelroy_harmonized_all_samples'])
+#plt.xticks(range(8, 24))
+#plt.xlim(7, 24)
+plt.grid(False)
+plt.xlabel('attention')
+plt.ylabel('count')
+plt.title('PNC attention distribution')
+plt.show()
+print('min:',  rand100_phenotype['attention_mcelroy_harmonized_all_samples'].min(), 'max:', rand100_phenotype['attention_mcelroy_harmonized_all_samples'].max())
+
+# %%
+i = 0
+for val in rand100_phenotype['p_factor_mcelroy_harmonized_all_samples']:
+    if val == rand100_phenotype[p].min():
+        i += 1
+i
+
+# %%
+"just age with p factor plotted"
+plt.scatter(lasso_data['age'], lasso_data[p])
+lasso_b, lasso_a = np.polyfit(lasso_data['age'], lasso_data[p], 1)
+plt.plot(lasso_data['age'], lasso_a + lasso_b * lasso_data['age'], color='red')
+
+# %%
+#looking at the prediciton accuracy but for regular not task
+block_timeseries_pred = get_timeseries_pred(con_model='lassoBIC_blocks')
+print(len(block_timeseries_pred))
+
+# %%
+#looking at the prediciton accuracy
+task_timeseries_pred = get_timeseries_pred(con_model='lassoBIC_task')
+print(len(task_timeseries_pred))
+
+# %%
+#This is averaged across node, so looking at the same people in each y. Want to do the inverse, averaged across people looking at node per y.
+plt.scatter(task_timeseries_pred.keys(), task_timeseries_pred.values(), color='red', alpha=.5, label='task')
+plt.scatter(block_timeseries_pred.keys(), block_timeseries_pred.values(), color='blue', alpha=.5, label='blocks')
+plt.legend()
+plt.title('timeseries prediction accuracy averaged across node')
+#plt.tick_params(labelbottom=True)
+plt.tight_layout()
+
+# %%
