@@ -188,7 +188,7 @@ def fit_model(model_str, splits, time_series, max_iter, n_rois, random_state, su
                 
             return results_dict 
         
-    elif model_str in ['correlation', 'tangent']: 
+    elif model_str in ['correlation', 'tangent', 'partial_correlation']: 
         corr_mat = model.fit_transform(np.array(time_series))[0]
         np.fill_diagonal(corr_mat, 1)
     
@@ -238,6 +238,7 @@ if __name__ == "__main__":
     except KeyError: 
         args = parser.parse_args([])
         notebook = True
+        #TO DO: here too
         results_path = '/gscratch/scrubbed/gkolpin/xcpd_output/pnc_xcpd_4S156Parcels/derivatives/connectivity-matrices/xcpd'
     
     args.sub_id = str(args.sub_id).replace('sub-', '')
@@ -272,7 +273,7 @@ if __name__ == "__main__":
         results_path = op.join(fc_data_path, 
                         'derivatives',
                         'connectivity-matrices',
-                        'test', 
+                        proc_type,
                         f"{model_str.replace('-', '')}_{cv}",
                         f'sub-{sub_id}')
     
